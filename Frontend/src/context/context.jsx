@@ -6,10 +6,11 @@ export const Context = createContext();
 const STORAGE_KEY = "dextra_chat_history_v1";
 const THEME_KEY = "dextra_theme_v1";
 
-// Backend URL from Vercel environment variables.
-// Falls back to localhost for local development.
+// Production: URL comes from Vercel environment variables.
+// Development: use the local Express backend.
 const API_URL = (
-  import.meta.env.VITE_API_URL || "http://localhost:3001"
+  import.meta.env.VITE_API_URL ||
+  (import.meta.env.DEV ? "http://localhost:3001" : "")
 ).replace(/\/$/, "");
 
 // Load saved chats
@@ -69,26 +70,27 @@ const ContextProvider = (props) => {
   // Generate chat title
   const createTitle = (text) => {
     const clean = text.trim();
+
     return clean.length > 28
       ? `${clean.slice(0, 28)}...`
       : clean;
   };
 
-  // Create a new chat
+  // Create new chat
   const newChat = () => {
     setCurrentChatId(null);
     setInput("");
     setLoading(false);
   };
 
-  // Select an existing chat
+  // Select existing chat
   const selectChat = (id) => {
     setCurrentChatId(id);
     setInput("");
     setLoading(false);
   };
 
-  // Clear all chat history
+  // Clear chat history
   const clearHistory = () => {
     setChats([]);
     setCurrentChatId(null);
@@ -98,7 +100,7 @@ const ContextProvider = (props) => {
     localStorage.removeItem(STORAGE_KEY);
   };
 
-  // Toggle light and dark mode
+  // Toggle dark/light mode
   const toggleTheme = () => {
     setTheme((prev) =>
       prev === "light" ? "dark" : "light"
@@ -111,13 +113,21 @@ const ContextProvider = (props) => {
 
     if (!finalPrompt || loading) return;
 
+    // Prevent production from attempting localhost requests
+    if (!API_URL) {
+      console.error("VITE_API_URL is missing.");
+
+      setInput(finalPrompt);
+      return;
+    }
+
     setLoading(true);
     setInput("");
 
     let chatId = currentChatId;
 
     try {
-      // Create a new chat if one is not selected
+      // Create new chat if required
       if (!chatId) {
         chatId = Date.now().toString();
 
@@ -154,8 +164,8 @@ const ContextProvider = (props) => {
         );
       }
 
-      // Connect to deployed backend
-      console.log("Connecting to Dextra backend:", API_URL);
+      // Connect to deployed Render backend
+      console.log("Dextra API:", `${API_URL}/chat`);
 
       const response = await fetch(`${API_URL}/chat`, {
         method: "POST",
@@ -167,7 +177,7 @@ const ContextProvider = (props) => {
         }),
       });
 
-      // Safely parse backend response
+      // Read response safely
       const data = await response.json().catch(() => ({}));
 
       if (!response.ok) {
@@ -177,10 +187,10 @@ const ContextProvider = (props) => {
       }
 
       if (!data.text) {
-        throw new Error("Backend returned an empty response.");
+        throw new Error("The backend returned an empty response.");
       }
 
-      // Add assistant response to chat
+      // Add Gemini response to chat
       setChats((prev) =>
         prev.map((chat) =>
           chat.id === chatId
@@ -197,6 +207,7 @@ const ContextProvider = (props) => {
             : chat
         )
       );
+
     } catch (error) {
       console.error("Dextra API Error:", error);
 
